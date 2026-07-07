@@ -32,33 +32,122 @@ Set `OUTLINE_MCP_READONLY=true` to drop all write tools.
 1. **Get an Outline API token** — in Outline, click your avatar → **Settings → API Tokens →
    *New token***. Copy it (looks like `ol_api_…`). Each person uses their **own** token; the server
    only ever acts with that user's permissions.
-2. **Install `uv`** (a fast Python runner; the local setup launches the server with it):
+2. **Install `uv`** (a fast Python runner that launches the server):
    - **macOS / Linux:** `curl -LsSf https://astral.sh/uv/install.sh | sh`
    - **Windows (PowerShell):** `powershell -c "irm https://astral.sh/uv/install.ps1 | iex"`
-3. **Get this repo:** `git clone <repo-url> && cd outline-mcp-server`
+
+   Then open a **new terminal** so `uvx` is on your PATH.
+
+> **No clone needed** for the recommended method below — `uvx` fetches the code from GitHub for you.
+> Only the checkout-based methods (§3 script, §4 Claude Code) need `git clone`.
 
 ---
 
-## 1. Claude Desktop — the easy way (script)
+## 1. Claude Desktop — one command, no clone (recommended)
 
-Runs on **macOS, Windows, and Linux**. From the repo folder:
+Set your Outline URL + token, then paste the block for your OS. It writes the `outline` server into
+Claude Desktop's config file (correct per-OS path handled automatically; merges without clobbering
+other servers), pointing Claude at the GitHub build via `uvx`.
+
+**macOS / Linux** (Terminal):
 
 ```bash
-# macOS / Linux
-python3 scripts/setup.py
+export OUTLINE_API_URL='https://your-outline.example.com/api'
+export OUTLINE_TOKEN='ol_api_PASTE_YOUR_TOKEN'
+python3 - <<'PY'
+import json, os, platform, shutil
+from pathlib import Path
 
-# Windows
-python scripts\setup.py
+def cfg_path():
+    s = platform.system()
+    if s == "Darwin":
+        return Path.home() / "Library/Application Support/Claude/claude_desktop_config.json"
+    if s == "Windows":
+        base = os.environ.get("APPDATA") or (Path.home() / "AppData/Roaming")
+        return Path(base) / "Claude" / "claude_desktop_config.json"
+    base = os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config")
+    return Path(base) / "Claude" / "claude_desktop_config.json"
+
+uvx = shutil.which("uvx") or os.path.expanduser("~/.local/bin/uvx")
+p = cfg_path(); p.parent.mkdir(parents=True, exist_ok=True)
+cfg = json.loads(p.read_text() or "{}") if p.exists() else {}
+cfg.setdefault("mcpServers", {})["outline"] = {
+    "command": uvx,
+    "args": ["--from", "git+https://github.com/Geoffrey313/outline-mcp", "outline-mcp-server"],
+    "env": {
+        "OUTLINE_API_URL": os.environ["OUTLINE_API_URL"],
+        "OUTLINE_API_TOKEN": os.environ["OUTLINE_TOKEN"],
+    },
+}
+p.write_text(json.dumps(cfg, indent=2))
+print("Wrote", p, "\nuvx:", uvx)
+PY
 ```
 
-It asks for your Outline URL + token, writes them into the right Claude Desktop config file for your
-OS (backing up any existing one), then tells you to restart Claude Desktop. Done.
+**Windows** (PowerShell):
 
-> Once the package is published to PyPI you can add `--published` to use the shorter `uvx` launcher.
+```powershell
+$env:OUTLINE_API_URL='https://your-outline.example.com/api'
+$env:OUTLINE_TOKEN='ol_api_PASTE_YOUR_TOKEN'
+@'
+import json, os, platform, shutil
+from pathlib import Path
+
+def cfg_path():
+    s = platform.system()
+    if s == "Darwin":
+        return Path.home() / "Library/Application Support/Claude/claude_desktop_config.json"
+    if s == "Windows":
+        base = os.environ.get("APPDATA") or (Path.home() / "AppData/Roaming")
+        return Path(base) / "Claude" / "claude_desktop_config.json"
+    base = os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config")
+    return Path(base) / "Claude" / "claude_desktop_config.json"
+
+uvx = shutil.which("uvx") or "uvx"
+p = cfg_path(); p.parent.mkdir(parents=True, exist_ok=True)
+cfg = json.loads(p.read_text() or "{}") if p.exists() else {}
+cfg.setdefault("mcpServers", {})["outline"] = {
+    "command": uvx,
+    "args": ["--from", "git+https://github.com/Geoffrey313/outline-mcp", "outline-mcp-server"],
+    "env": {
+        "OUTLINE_API_URL": os.environ["OUTLINE_API_URL"],
+        "OUTLINE_API_TOKEN": os.environ["OUTLINE_TOKEN"],
+    },
+}
+p.write_text(json.dumps(cfg, indent=2))
+print("Wrote", p, "\nuvx:", uvx)
+'@ | python -
+```
+
+Then **fully quit Claude Desktop** (macOS ⌘Q / Windows: exit from the tray, not just close the
+window) and reopen. The Outline tools appear under the tools/🔌 icon; local servers are also listed
+under **Settings → Developer**.
+
+> **First launch can be slow** (~15–25s) while `uvx` downloads the build the first time — Claude may
+> time out and the server won't show. Fix: pre-warm the cache once in your terminal, then restart
+> Claude:
+> ```bash
+> OUTLINE_API_URL='https://your-outline.example.com/api' OUTLINE_TOKEN='ol_api_…' \
+>   "$(command -v uvx)" --from git+https://github.com/Geoffrey313/outline-mcp outline-mcp-server
+> ```
+> Press **Ctrl-C** once you see the `Outline MCP (stdio)` line — it's cached now.
+
+To update later: `uv cache clean` then restart Claude (re-pulls from GitHub).
 
 ---
 
-## 2. Claude Desktop — manual
+## 2. Claude Desktop — interactive script (from a checkout)
+
+If you've cloned the repo, this does the same thing with prompts (and backs up any existing config):
+
+```bash
+python3 scripts/setup.py      # macOS / Linux
+python  scripts\setup.py      # Windows
+```
+
+---
+
+## 3. Claude Desktop — manual
 
 Prefer to edit the file yourself? Open the config for your OS and add the `outline` block below.
 
@@ -66,7 +155,7 @@ Prefer to edit the file yourself? Open the config for your OS and add the `outli
 |---|---|
 | **macOS** | `~/Library/Application Support/Claude/claude_desktop_config.json` |
 | **Windows** | `%APPDATA%\Claude\claude_desktop_config.json` |
-| **Linux** | no official Claude Desktop — use **Claude Code** (§3) |
+| **Linux** | no official Claude Desktop — use **Claude Code** (§4) |
 
 ```jsonc
 {
@@ -89,7 +178,7 @@ appear under the tools/search icon. (After publishing to PyPI, this simplifies t
 
 ---
 
-## 3. Claude Code (any OS, including Linux)
+## 4. Claude Code (any OS, including Linux)
 
 One command from the repo folder:
 
@@ -102,7 +191,7 @@ claude mcp add outline \
 
 ---
 
-## 4. ChatGPT (Desktop or web) — remote connector
+## 5. ChatGPT (Desktop or web) — remote connector
 
 ChatGPT connects to **hosted (remote) MCP servers only** — it can't launch a local process like
 Claude Desktop can. So you first deploy the server (see **Hosted deployment** below), then in ChatGPT:
@@ -113,7 +202,7 @@ the Bearer credential. macOS and Windows desktop apps use the same connector.
 
 ---
 
-## 5. Remote server from Claude Desktop (via `mcp-remote`)
+## 6. Remote server from Claude Desktop (via `mcp-remote`)
 
 To connect Claude Desktop to a **hosted** instance instead of running it locally, use the
 `mcp-remote` bridge (needs Node.js):
