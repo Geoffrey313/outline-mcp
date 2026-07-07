@@ -1,0 +1,34 @@
+services:
+  outline-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: outline-mcp
+    restart: unless-stopped
+    environment:
+      OUTLINE_API_URL: ${OUTLINE_API_URL:-https://your-outline.example.com/api}
+      MCP_TRANSPORT: http
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 9000
+      # Choose exactly one inbound strategy (see .env.example / docs/design-spec.md §4).
+      MCP_ALLOW_OUTLINE_TOKEN_AUTH: ${MCP_ALLOW_OUTLINE_TOKEN_AUTH:-true}
+      MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:-}
+      MCP_ALLOW_UNAUTHENTICATED: ${MCP_ALLOW_UNAUTHENTICATED:-false}
+      # Required: the public host(s) this server is served on.
+      MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:?set MCP_ALLOWED_HOSTS to your public host}
+      # Only used by Gateway/Open strategies; leave unset for Passthrough.
+      OUTLINE_API_TOKEN: ${OUTLINE_API_TOKEN:-}
+      OUTLINE_MCP_READONLY: ${OUTLINE_MCP_READONLY:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    expose:
+      - "9000"
+    # Join the same external network Outline + Nginx Proxy Manager already share, so NPM can reach
+    # this container by its alias (http://outline-mcp:9000). Not published to the host.
+    networks:
+      backend:
+        aliases:
+          - outline-mcp
+
+networks:
+  backend:
+    external: true
